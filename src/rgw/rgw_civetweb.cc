@@ -9,21 +9,30 @@
 #include "civetweb/civetweb.h"
 #include "rgw_civetweb.h"
 
-
+#define dout_context g_ceph_context
 #define dout_subsys ceph_subsys_rgw
 
 size_t RGWCivetWeb::write_data(const char *buf, const size_t len)
 {
+  size_t off = 0;
   auto to_sent = len;
   while (to_sent) {
-    const int ret = mg_write(conn, buf, len);
+    const int ret = mg_write(conn, buf + off, to_sent);
     if (ret < 0 || ! ret) {
       /* According to the documentation of mg_write() it always returns -1 on
        * error. The details aren't available, so we will just throw EIO. Same
        * goes to 0 that is associated with writing to a closed connection. */
+      dout(0) << "write_data failed, off:" << off << " len:" << to_sent
+              << " total:" << len << " ret:" << ret << dendl;
       throw rgw::io::Exception(EIO, std::system_category());
     } else {
+      off += static_cast<size_t>(ret);
       to_sent -= static_cast<size_t>(ret);
+    }
+
+    if (ret < to_sent) {
+      dout(0) << "write_data interrupt, off:" << off << " len:" << to_sent
+              << " total:" << len << " ret:" << ret << dendl;
     }
   }
   return len;
